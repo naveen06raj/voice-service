@@ -47,3 +47,10 @@ steps:
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+
+# ============================================
+# BUILD LOGGING FIX
+# ============================================
+
+options:
+  logging: CLOUD_LOGGING_ONLY
