@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice Autofill</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f7f7f7;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: #1aa36f;
+      color: white;
+      font-weight: bold;
+    }
+
+    button.recording {
+      background: #d93025;
+    }
+
+    .mic-btn {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 14px;
+      border-radius: 10px;
+      min-height: 140px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Voice Autofill</h2>
+
+    <div class="row">
+      <div class="field">
+        <label>Token</label>
+        <input id="token" placeholder="token from login" />
+      </div>
+      <div class="field">
+        <label>Property ID</label>
+        <input id="propertyId" type="number" value="1" />
+      </div>
+    </div>
+
+    <button id="micBtn" class="mic-btn">🎤</button>
+
+    <p><strong>Status:</strong> <span id="status">Idle</span></p>
+  </div>
+
+  <div class="card">
+    <h3>Autofill Result</h3>
+    <div class="field">
+      <label>Location</label>
+      <input id="location" />
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <input id="type" />
+    </div>
+    <div class="field">
+      <label>Remarks</label>
+      <input id="remarks" />
+    </div>
+    <h3>Raw Response</h3>
+    <pre id="result"></pre>
+  </div>
+
+  <script>
+    let ws = null;
+    let mediaRecorder = null;
+    let stream = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    const micBtn = document.getElementById("micBtn");
+    const statusEl = document.getElementById("status");
+    const resultBox = document.getElementById("result");
+
+    const tokenInput = document.getElementById("token");
+    const propertyIdInput = document.getElementById("propertyId");
+
+    const locationInput = document.getElementById("location");
+    const typeInput = document.getElementById("type");
+    const remarksInput = document.getElementById("remarks");
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function fillForm(data) {
+      const payload = data?.data || data;
+
+      if (payload?.location) {
+        locationInput.value = payload.location.name || "";
+      }
+
+      if (payload?.type) {
+        typeInput.value = payload.type.name || "";
+      }
+
+      if (payload?.remarks) {
+        remarksInput.value = payload.remarks || "";
+      }
+    }
+
+    micBtn.onclick = async () => {
+      const token = tokenInput.value.trim();
+      const propertyId = Number(propertyIdInput.value || 1);
+
+      if (!token) {
+        alert("Please enter token");
+        return;
+      }
+
+      if (!isRecording) {
+        setStatus("Connecting...");
+
+        ws = new WebSocket("ws://127.0.0.1:9000/ws/voice");
+
+        ws.onopen = async () => {
+          setStatus("Connected");
+
+          // send token + property_id first
+          ws.send(JSON.stringify({
+            token: token,
+            property_id: propertyId
+          }));
+
+          // start mic recording
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            const arrayBuffer = await audioBlob.arrayBuffer();
+
+            ws.send(arrayBuffer);
+            setStatus("Audio sent, waiting for response...");
+
+            if (stream) {
+              stream.getTracks().forEach(track => track.stop());
+              stream = null;
+            }
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          micBtn.textContent = "⏹";
+          micBtn.classList.add("recording");
+          setStatus("Recording...");
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            resultBox.textContent = JSON.stringify(data, null, 2);
+            fillForm(data);
+            setStatus("Response received");
+          } catch (e) {
+            resultBox.textContent = event.data;
+          }
+        };
+
+        ws.onerror = () => {
+          setStatus("WebSocket error");
+        };
+
+        ws.onclose = () => {
+          isRecording = false;
+          micBtn.textContent = "🎤";
+          micBtn.classList.remove("recording");
+          setStatus("Disconnected");
+        };
+
+      } else {
+        // stop recording
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+
+        isRecording = false;
+        micBtn.textContent = "🎤";
+        micBtn.classList.remove("recording");
+        setStatus("Processing...");
+      }
+    };
+  </script>
+</body>
+</html>
