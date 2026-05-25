@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.env
+
+aivoice/
+venv/
+.venv/
+
+.git/
+.gitignore
+
+test_voice.html
+
+.vscode/

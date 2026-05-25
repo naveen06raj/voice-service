@@ -1,0 +1,49 @@
+substitutions:
+  _REGION: us-central1
+  _REPO: voice-repo
+  _SERVICE: voice-service
+
+steps:
+
+  # ============================================
+  # BUILD IMAGE
+  # ============================================
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - .
+
+  # ============================================
+  # PUSH IMAGE
+  # ============================================
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+
+  # ============================================
+  # DEPLOY CLOUD RUN
+  # ============================================
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=2Gi
+      - --cpu=2
+      - --timeout=300
+      - --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_LOCATION=${_REGION}
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
