@@ -24,7 +24,7 @@ app.include_router(voice_router)
 async def root():
     return {
         "service": "voice-autofill-service",
-        "status": "running cloud"
+        "status": "running"
     }
 
 
