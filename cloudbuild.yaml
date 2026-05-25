@@ -44,7 +44,7 @@ steps:
       - --cpu=2
       - --timeout=300
       - --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_LOCATION=${_REGION}
-      --no-cpu-throttling
+      - --no-cpu-throttling
       - --concurrency=1000
       # 🟢 ADD THESE TWO EXTRA FLAGS BELOW:
       - --probe-path=/health          # Tells Cloud Run to check your /health endpoint
