@@ -33,3 +33,13 @@ async def health():
     return {
         "status": "healthy"
     }
+
+import os
+import uvicorn
+
+if __name__ == "__main__":
+    # 🌟 Captures the port variable Cloud Run passes (3000)
+    port = int(os.environ.get("PORT", 3000)) 
+    
+    # 🌟 Must be 0.0.0.0 so external networks can check app health
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
