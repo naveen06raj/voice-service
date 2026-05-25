@@ -51,4 +51,5 @@ EXPOSE 8080
 # START FASTAPI
 # ============================================
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Do NOT hardcode --port 8000 or --host 127.0.0.1
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-3000}"]
