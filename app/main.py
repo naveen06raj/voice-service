@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import uvicorn
 
 from app.api.voice_ws import router as voice_router
 
@@ -34,12 +36,11 @@ async def health():
         "status": "healthy"
     }
 
-import os
-import uvicorn
 
 if __name__ == "__main__":
-    # 🌟 Captures the port variable Cloud Run passes (3000)
+    # 🌟 Captures the port variable Cloud Run passes (defaulting to 3000)
     port = int(os.environ.get("PORT", 3000)) 
     
-    # 🌟 Must be 0.0.0.0 so external networks can check app health
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+    # 🟢 FIXED: Pass the 'app' instance directly instead of a fragile folder string layout path.
+    # This completely eliminates "ModuleNotFoundError" or "ImportError" loops at startup.
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -42,13 +42,10 @@ steps:
       - --port=3000
       - --memory=2Gi
       - --cpu=2
-      - --timeout=3600             # Optimized to keep WebSocket connections alive for up to 1 hour
-      - --no-cpu-throttling        # Keeps CPU active for uninterrupted streaming
-      - --concurrency=1000         # Allows 1,000 WebSocket connections per container
+      - --timeout=3600            # Keeps real-time WebSocket frames alive for up to 1 hour
+      - --no-cpu-throttling       # Prevents container background sleep pauses during quiet streams
+      - --concurrency=1000        # Maximizes simultaneous web socket pooling per instance
       - --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_LOCATION=${_REGION}
-      # 🟢 FIXED CORRECT FLAG NAMES FOR GCLOUD BELOW:
-      - --startup-probe-path=/health
-      - --cpu-boost
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA

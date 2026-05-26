@@ -26,9 +26,10 @@ async def get_defect_locations(
     payload = {"property": property_id}
 
     async with httpx.AsyncClient(timeout=60) as client:
+        # 🟢 FIXED: Changed data= to json= to send proper application/json payloads
         response = await client.post(
             LOCATION_API_URL,
-            data=payload,
+            json=payload,
             headers=_headers(token),
         )
 
@@ -48,9 +49,10 @@ async def get_defect_types(
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
+        # 🟢 FIXED: Changed data= to json= here as well
         response = await client.post(
             TYPE_API_URL,
-            data=payload,
+            json=payload,
             headers=_headers(token),
         )
 
@@ -65,16 +67,18 @@ def match_location(
 ) -> Optional[Dict[str, Any]]:
     target = _normalize_text(location_text)
 
+    # First Pass: Try to find an exact match (Highly Recommended)
+    for item in locations:
+        location_name = _normalize_text(item.get("defect_location"))
+        if target == location_name:
+            return item
+
+    # Second Pass: Fallback to substring matching if exact match wasn't found
     for item in locations:
         location_name = _normalize_text(item.get("defect_location"))
         if not location_name:
             continue
-
-        if (
-            target == location_name
-            or target in location_name
-            or location_name in target
-        ):
+        if target in location_name or location_name in target:
             return item
 
     return None
@@ -86,16 +90,18 @@ def match_defect_type(
 ) -> Optional[Dict[str, Any]]:
     target = _normalize_text(type_text)
 
+    # First Pass: Try to find an exact match
+    for item in defect_types:
+        defect_type_name = _normalize_text(item.get("defect_type"))
+        if target == defect_type_name:
+            return item
+
+    # Second Pass: Fallback to substring matching
     for item in defect_types:
         defect_type_name = _normalize_text(item.get("defect_type"))
         if not defect_type_name:
             continue
-
-        if (
-            target == defect_type_name
-            or target in defect_type_name
-            or defect_type_name in target
-        ):
+        if target in defect_type_name or defect_type_name in target:
             return item
 
     return None

@@ -11,8 +11,10 @@ from app.services.api_client.defect_client import (
     match_defect_type,
 )
 
-
+# 🟢 Enforce structured JSON mode output at the model level if supported by your configuration
 llm = get_chat_model()
+if hasattr(llm, "bind"):
+    llm = llm.bind(response_format={"type": "json_object"})
 
 
 def _clean_json(raw: str) -> str:
@@ -54,50 +56,52 @@ async def generate_defect_autofill(
         ]
 
         # -------------------------------------------------
-        # 2) Ask LLM to select ONE valid location
+        # 2) Combined single-pass extraction prompt
         # -------------------------------------------------
-        location_prompt = f"""
-You are a defect location selector.
+        combined_prompt = f"""
+You are an expert defect classification assistant. Your task is to process the user's input voice text and determine the best matching location, the best matching defect type, and generate professional remarks in a single operation.
 
 User text:
-{user_text}
+"{user_text}"
 
 Available locations:
 {chr(10).join(location_names)}
 
-Rules:
-- Select ONLY ONE location from the available locations
-- Do not invent a new location
-- If the user mentions a room/area, choose the closest matching location
-- Return ONLY valid JSON
+Instructions for Location:
+- Select ONLY ONE location from the available locations list. Do not invent a location.
 
-Format:
+Instructions for Remarks:
+- Rewrite the user text to make it professional, short, and clear.
+- It must sound like an engineering team reporting a defect.
+
+Return ONLY a valid JSON object matching this schema:
 {{
-  "location": "selected location"
+  "location": "exact selected location name from list",
+  "remarks": "professional remark text"
 }}
 """
-
-        location_result = await _llm_json(location_prompt)
-        selected_location_text = location_result.get("location")
+        # Execute first pass for Location and Remarks simultaneously
+        first_pass_result = await _llm_json(combined_prompt)
+        selected_location_text = first_pass_result.get("location")
+        remarks = first_pass_result.get("remarks") or user_text
 
         if not selected_location_text:
             return {
                 "success": False,
-                "message": "Location not selected"
+                "message": "Location could not be parsed by the assistant."
             }
 
         matched_location = match_location(locations, selected_location_text)
-
         if not matched_location:
             return {
                 "success": False,
-                "message": f"Location not matched: {selected_location_text}"
+                "message": f"Location not matched on system: {selected_location_text}"
             }
 
         location_id = matched_location.get("id")
 
         # -------------------------------------------------
-        # 3) Get defect types based on selected location
+        # 3) Fetch types matching the successfully identified location
         # -------------------------------------------------
         defect_types = await get_defect_types(
             token=token,
@@ -108,7 +112,7 @@ Format:
         if not defect_types:
             return {
                 "success": False,
-                "message": "No defect types found for selected location"
+                "message": f"No defect types found for matched location ID: {location_id}"
             }
 
         type_names = [
@@ -118,32 +122,30 @@ Format:
         ]
 
         # -------------------------------------------------
-        # 4) Ask LLM to select ONE valid type
+        # 4) Ask LLM to pick the correct type
         # -------------------------------------------------
         type_prompt = f"""
 You are a defect type selector.
 
 User text:
-{user_text}
+"{user_text}"
 
 Selected location:
-{selected_location_text}
+"{matched_location.get('defect_location')}"
 
-Available defect types:
+Available defect types for this specific location:
 {chr(10).join(type_names)}
 
 Rules:
-- Select ONLY ONE defect type from the available types
-- Do not invent a new type
-- Choose the best matching defect type
-- Return ONLY valid JSON
+- Select ONLY ONE defect type from the available types list.
+- Do not invent a new type.
+- Return ONLY valid JSON.
 
 Format:
 {{
   "type": "selected type"
 }}
 """
-
         type_result = await _llm_json(type_prompt)
         selected_type_text = type_result.get("type")
 
@@ -154,7 +156,6 @@ Format:
             }
 
         matched_type = match_defect_type(defect_types, selected_type_text)
-
         if not matched_type:
             return {
                 "success": False,
@@ -162,37 +163,7 @@ Format:
             }
 
         # -------------------------------------------------
-        # 5) Ask LLM to write professional remarks
-        # -------------------------------------------------
-        remarks_prompt = f"""
-Write a professional defect remark.
-
-User text:
-{user_text}
-
-Selected location:
-{selected_location_text}
-
-Selected type:
-{selected_type_text}
-
-Rules:
-- Keep the meaning the same
-- Make it short, clear, and professional
-- Sound like a user reporting to defect management
-- Return ONLY valid JSON
-
-Format:
-{{
-  "remarks": "professional remark"
-}}
-"""
-
-        remarks_result = await _llm_json(remarks_prompt)
-        remarks = remarks_result.get("remarks") or user_text
-
-        # -------------------------------------------------
-        # 6) Final JSON for frontend autofill
+        # 5) Consolidated JSON output structure
         # -------------------------------------------------
         return {
             "success": True,
@@ -215,7 +186,7 @@ Format:
     except json.JSONDecodeError:
         return {
             "success": False,
-            "message": "AI response was not valid JSON"
+            "message": "AI response failed validation layout constraints"
         }
     except Exception as e:
         return {
